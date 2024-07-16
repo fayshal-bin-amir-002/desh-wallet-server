@@ -150,27 +150,59 @@ async function run() {
         })
 
         //send money to a user
-        app.post("/send-money", async (req, res) => {
+        app.post("/send-money", verifyToken, async (req, res) => {
+
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+
             const sendMoneyData = req.body;
-            console.log(sendMoneyData);
-            const query1 = { phone: sendMoneyData.senderNumber };
-            const query2 = { phone: sendMoneyData.receiverNumber };
 
-            const updateDoc1 = {
-                $inc: {
-                    balance: - sendMoneyData.totalAmout
-                },
-            };
-            const updateDoc2 = {
-                $inc: {
-                    balance: sendMoneyData.sentAmount
-                },
-            };
+            const isEmailExists = await usersCollection.findOne({ email: email });
+            const isPhoneExists = await usersCollection.findOne({ phone: phone });
 
-            const result1 = await usersCollection.updateOne(query1, updateDoc1);
-            const result2 = await usersCollection.updateOne(query2, updateDoc2);
+            let hash;
+            let dbUser;
+            if (isPhoneExists) hash = isPhoneExists?.pin;
+            if (isEmailExists) hash = isEmailExists?.pin;
 
-            res.send(result1);
+
+
+            bcrypt.compare(sendMoneyData?.pin, hash, async (err, result) => {
+
+                if (!result) {
+                    return res.send({ message: "Wrong information!" });
+                }
+                const query1 = { phone: sendMoneyData.senderNumber };
+                const query2 = { phone: sendMoneyData.receiverNumber };
+
+                const updateDoc1 = {
+                    $inc: {
+                        balance: - sendMoneyData.totalAmout
+                    },
+                };
+                const updateDoc2 = {
+                    $inc: {
+                        balance: sendMoneyData.sentAmount
+                    },
+                };
+
+                const newData = {
+                    ...sendMoneyData,
+                    pin: "#####"
+                }
+
+                const result0 = await sendMoneyCollection.insertOne(newData);
+
+                const result1 = await usersCollection.updateOne(query1, updateDoc1);
+                const result2 = await usersCollection.updateOne(query2, updateDoc2);
+
+                res.send(result1);
+            });
+
 
         })
 
@@ -212,6 +244,31 @@ async function run() {
             };
             const result = await usersCollection.updateOne(query, updateDoc);
             const result1 = await usersCollection.updateOne(query, updateDoc1);
+            res.send(result);
+        })
+
+        //get a users send money history
+        app.get("/sendMoneyHistory", verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+
+            const query = { senderNumber: phone };
+            const options = {
+                projection: { _id: 1, senderNumber: 1, receiverNumber: 1, sentAmount: 1, date: 1 },
+            };
+
+            const query1 = { receiverNumber: phone };
+            const options1 = {
+                projection: { _id: 1, senderNumber: 1, receiverNumber: 1, sentAmount: 1, date: 1 },
+            };
+
+            const result1 = await sendMoneyCollection.find(query, options).toArray();
+            const result2 = await sendMoneyCollection.find(query1, options1).toArray();
+            const result = [...result1, ...result2];
             res.send(result);
         })
 
