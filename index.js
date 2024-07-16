@@ -51,13 +51,37 @@ async function run() {
                     name: user?.name,
                     email: user?.email,
                     phone: user?.phone,
-                    status: user?.status
+                    status: user?.status,
+                    role: user.role
                 }
-                res.send({result, regUser});
+                res.send({ result, regUser });
             });
         })
 
-        //get user data from 
+        //get user data from db and login info
+        app.post("/user", async (req, res) => {
+            const user = req.body;
+            const isEmailExists = await usersCollection.findOne({ email: user.acc });
+            const isPhoneExists = await usersCollection.findOne({ phone: user.acc });
+            if (!isEmailExists && !isPhoneExists) return res.send({ message: "Please register first!" });
+            let hash;
+            let dbUser;
+            if (isPhoneExists) hash = isPhoneExists?.pin, dbUser = isPhoneExists;
+            if (isEmailExists) hash = isEmailExists?.pin, dbUser = isEmailExists;
+            bcrypt.compare(user?.pin, hash, function (err, result) {
+                if (!result) {
+                    return res.send({ message: "Wrong information!" });
+                }
+                const loggedUser = {
+                    name: dbUser.name,
+                    email: dbUser.email,
+                    phone: dbUser.phone,
+                    status: dbUser.status,
+                    role: dbUser.role
+                }
+                res.send(loggedUser);
+            });
+        })
 
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
