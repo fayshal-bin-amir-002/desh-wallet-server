@@ -61,8 +61,8 @@ async function run() {
             const user = req.decoded;
             const query1 = { email: user?.acc };
             const query2 = { phone: user?.acc };
-            const result1 = await usersCollection.findOne(query);
-            const result2 = await usersCollection.findOne(query);
+            const result1 = await usersCollection.findOne(query1);
+            const result2 = await usersCollection.findOne(query2);
             let admin;
             if (result1) admin = result1;
             if (result2) admin = result2;
@@ -479,8 +479,8 @@ async function run() {
             res.send(result);
         })
 
-        //get all send money his by admin
-        app.get("/AdminSendMoneyHis", verifyToken, async (req, res) => {
+        //get all send money history by admin
+        app.get("/AdminSendMoneyHis", verifyToken, verifyAdmin, async (req, res) => {
             const email = req.query.email;
             const phone = req.query.phone;
 
@@ -489,6 +489,32 @@ async function run() {
             }
 
             const result = await sendMoneyCollection.find().toArray();
+            res.send(result);
+        })
+
+        //get all cash in history by admin
+        app.get("/AdminCashInHis", verifyToken, verifyAdmin, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+
+            const result = await cashInCollection.find().toArray();
+            res.send(result);
+        })
+
+        //get all cash out history by admin
+        app.get("/AdminCashOutHis", verifyToken, verifyAdmin, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+
+            const result = await cashOutCollection.find().toArray();
             res.send(result);
         })
 
