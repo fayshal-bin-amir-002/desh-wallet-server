@@ -327,7 +327,7 @@ async function run() {
             res.send(result);
         })
 
-        //get all kind of cash in req by a agent
+        //get cash in req by a agent
         app.get("/cashinRequestAgent", verifyToken, async (req, res) => {
             const email = req.query.email;
             const phone = req.query.phone;
@@ -339,6 +339,21 @@ async function run() {
             const query = { agentNumber: phone };
 
             const result = await cashInCollection.find(query).toArray();
+            res.send(result);
+        })
+
+        //get cash out req by a agent
+        app.get("/cashOutRequestAgent", verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+
+            const query = { agentNumber: phone };
+
+            const result = await cashOutCollection.find(query).toArray();
             res.send(result);
         })
 
@@ -404,6 +419,7 @@ async function run() {
             if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
                 return res.status(403).send({ message: 'Forbidden Access' });
             }
+
             const data = req.body;
 
             const query = { phone: phone }
@@ -421,7 +437,7 @@ async function run() {
                 const query2 = { phone: data.userNumber };
 
                 const isExistAgent = await usersCollection.findOne(query1);
-                if(!isExistAgent || isExistAgent?.role !== 'agent') return res.send({ message: "No agent found on this number!" });
+                if (!isExistAgent || isExistAgent?.role !== 'agent') return res.send({ message: "No agent found on this number!" });
 
                 const updateDoc1 = {
                     $inc: {
@@ -431,9 +447,13 @@ async function run() {
 
                 const updateDoc2 = {
                     $inc: {
-                        balance: - data?.amount
+                        balance: - data?.total
                     },
                 };
+
+                const cashOutData = {
+                    ...data, pin: "#####"
+                }
 
                 const result0 = await cashOutCollection.insertOne(data);
 
@@ -445,6 +465,33 @@ async function run() {
             });
 
         })
+
+        //get all cash out history by a user
+        app.get("/cashOutHistory", verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+
+            const result = await cashOutCollection.find({ userNumber: phone }).toArray();
+            res.send(result);
+        })
+
+        //get all send money his by admin
+        app.get("/AdminSendMoneyHis", verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+
+            const result = await sendMoneyCollection.find().toArray();
+            res.send(result);
+        })
+
 
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
