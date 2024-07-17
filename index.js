@@ -59,9 +59,14 @@ async function run() {
         //<---middleware for verify admin--->
         const verifyAdmin = async (req, res, next) => {
             const user = req.decoded;
-            const query = { email: user?.email };
-            const result = await usersCollection.findOne(query);
-            if (!result || result?.role !== 'admin') {
+            const query1 = { email: user?.acc };
+            const query2 = { phone: user?.acc };
+            const result1 = await usersCollection.findOne(query);
+            const result2 = await usersCollection.findOne(query);
+            let admin;
+            if (result1) admin = result1;
+            if (result2) admin = result2;
+            if (!admin || admin?.role !== 'admin') {
                 return res.status(401).send({ message: "Unauthorized Access" });
             }
             next();
@@ -258,11 +263,17 @@ async function run() {
 
             const query = { senderNumber: phone };
             const options = {
+                $sort: {
+                    date: 1
+                },
                 projection: { _id: 1, senderNumber: 1, receiverNumber: 1, sentAmount: 1, date: 1 },
             };
 
             const query1 = { receiverNumber: phone };
             const options1 = {
+                $sort: {
+                    date: 1
+                },
                 projection: { _id: 1, senderNumber: 1, receiverNumber: 1, sentAmount: 1, date: 1 },
             };
 
@@ -270,6 +281,169 @@ async function run() {
             const result2 = await sendMoneyCollection.find(query1, options1).toArray();
             const result = [...result1, ...result2];
             res.send(result);
+        })
+
+        //cash in request
+        app.post("/cashin-request", verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+            const reqData = req.body;
+            const data = { ...reqData, status: "pending" };
+            const result = await cashInCollection.insertOne(data);
+            res.send(result);
+        })
+
+        //get all cash in req by a user
+        app.get("/cashinRequest", verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+
+            const query = { reqNumber: phone };
+
+            const result = await cashInCollection.find(query).toArray();
+            res.send(result);
+        })
+
+        //get all pending cash in req by a agent
+        app.get("/cashinRequestPendingAgent", verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+
+            const query = { agentNumber: phone, status: 'pending' };
+
+            const result = await cashInCollection.find(query).toArray();
+            res.send(result);
+        })
+
+        //get all kind of cash in req by a agent
+        app.get("/cashinRequestAgent", verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+
+            const query = { agentNumber: phone };
+
+            const result = await cashInCollection.find(query).toArray();
+            res.send(result);
+        })
+
+        //update the cash in req by a agent
+        app.patch("/cashinRequestUpdate", verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+
+            const { id, txt, number, amount } = req.body;
+
+            const query = { _id: new ObjectId(id) };
+
+            const query0 = { phone: number };
+
+            const query1 = { phone: phone };
+
+            if (txt === 'accept') {
+
+                const cash = Number(amount);
+
+                const updateDoc = {
+                    $set: {
+                        status: "accepted"
+                    },
+                };
+
+                const updateDoc0 = {
+                    $inc: {
+                        balance: cash
+                    },
+                };
+
+                const updateDoc1 = {
+                    $inc: {
+                        balance: - cash
+                    },
+                };
+
+                const result = await cashInCollection.updateOne(query, updateDoc);
+                const result0 = await usersCollection.updateOne(query0, updateDoc0);
+                const result1 = await usersCollection.updateOne(query1, updateDoc1);
+                res.send(result);
+            } else {
+                const updateDoc = {
+                    $set: {
+                        status: "rejected"
+                    },
+                };
+                const result = await cashInCollection.updateOne(query, updateDoc);
+                res.send(result);
+            }
+        })
+
+        //cash out by user
+        app.post("/cashOut", verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+            const data = req.body;
+
+            const query = { phone: phone }
+
+            let hash;
+            const user = await usersCollection.findOne(query);
+            hash = user?.pin;
+
+            bcrypt.compare(data?.pin, hash, async (err, result) => {
+
+                if (!result) {
+                    return res.send({ message: "Wrong information!" });
+                }
+                const query1 = { phone: data.agentNumber };
+                const query2 = { phone: data.userNumber };
+
+                const isExistAgent = await usersCollection.findOne(query1);
+                if(!isExistAgent || isExistAgent?.role !== 'agent') return res.send({ message: "No agent found on this number!" });
+
+                const updateDoc1 = {
+                    $inc: {
+                        balance: data?.total
+                    },
+                };
+
+                const updateDoc2 = {
+                    $inc: {
+                        balance: - data?.amount
+                    },
+                };
+
+                const result0 = await cashOutCollection.insertOne(data);
+
+                const result1 = await usersCollection.updateOne(query1, updateDoc1);
+                const result2 = await usersCollection.updateOne(query2, updateDoc2);
+
+                res.send(result0);
+
+            });
+
         })
 
         // Send a ping to confirm a successful connection
