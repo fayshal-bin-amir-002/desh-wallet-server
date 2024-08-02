@@ -75,9 +75,14 @@ async function run() {
         //<---middleware for verify agent--->
         const verifyAgent = async (req, res, next) => {
             const user = req.decoded;
-            const query = { email: user?.email };
-            const result = await usersCollection.findOne(query);
-            if (!result || result?.role !== 'trainer') {
+            const query1 = { email: user?.acc };
+            const query2 = { phone: user?.acc };
+            const result1 = await usersCollection.findOne(query1);
+            const result2 = await usersCollection.findOne(query2);
+            let agent;
+            if (result1) agent = result1;
+            if (result2) agent = result2;
+            if (!agent || agent?.role !== 'agent') {
                 return res.status(401).send({ message: "Unauthorized Access" });
             }
             next();
@@ -151,7 +156,8 @@ async function run() {
                 projection: { _id: 0, name: 1, email: 1, phone: 1, status: 1, role: 1, balance: 1 },
             };
             const result = await usersCollection.findOne(query, options);
-            res.send(result);
+            const finalResult = {...result, balance: result.balance.toFixed(2)};
+            res.send(finalResult);
         })
 
         //send money to a user
@@ -357,6 +363,21 @@ async function run() {
             res.send(result);
         })
 
+        //get cash out req pending by a agent
+        app.get("/cashOutRequestPendingAgent", verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+
+            const query = { agentNumber: phone, status: 'pending' };
+
+            const result = await cashOutCollection.find(query).toArray();
+            res.send(result);
+        })
+
         //update the cash in req by a agent
         app.patch("/cashinRequestUpdate", verifyToken, async (req, res) => {
             const email = req.query.email;
@@ -411,6 +432,59 @@ async function run() {
             }
         })
 
+        //update the cash out req by a agent
+        app.patch("/cashOutRequestUpdate", verifyToken, verifyAgent, async (req, res) => {
+            const email = req.query.email;
+            const phone = req.query.phone;
+
+            if (req?.decoded?.acc !== email && req?.decoded?.acc !== phone) {
+                return res.status(403).send({ message: 'Forbidden Access' });
+            }
+
+            const { id, txt, number, amount, total } = req.body;
+
+            const query = { _id: new ObjectId(id) };
+
+            const query0 = { phone: number };
+
+            const query1 = { phone: phone };
+
+            if (txt === 'accept') {
+
+
+                const updateDoc = {
+                    $set: {
+                        status: "accepted"
+                    },
+                };
+
+                const updateDoc0 = {
+                    $inc: {
+                        balance: - total
+                    },
+                };
+
+                const updateDoc1 = {
+                    $inc: {
+                        balance: amount
+                    },
+                };
+
+                const result = await cashOutCollection.updateOne(query, updateDoc);
+                const result0 = await usersCollection.updateOne(query0, updateDoc0);
+                const result1 = await usersCollection.updateOne(query1, updateDoc1);
+                res.send(result);
+            } else {
+                const updateDoc = {
+                    $set: {
+                        status: "rejected"
+                    },
+                };
+                const result = await cashOutCollection.updateOne(query, updateDoc);
+                res.send(result);
+            }
+        })
+
         //cash out by user
         app.post("/cashOut", verifyToken, async (req, res) => {
             const email = req.query.email;
@@ -421,6 +495,8 @@ async function run() {
             }
 
             const data = req.body;
+
+            const cashOutData = {...data, status: 'pending', pin: '#####'};
 
             const query = { phone: phone }
 
@@ -433,32 +509,28 @@ async function run() {
                 if (!result) {
                     return res.send({ message: "Wrong information!" });
                 }
-                const query1 = { phone: data.agentNumber };
-                const query2 = { phone: data.userNumber };
+                // const query1 = { phone: data.agentNumber };
+                // const query2 = { phone: data.userNumber };
 
-                const isExistAgent = await usersCollection.findOne(query1);
-                if (!isExistAgent || isExistAgent?.role !== 'agent') return res.send({ message: "No agent found on this number!" });
+                // const isExistAgent = await usersCollection.findOne(query1);
+                // if (!isExistAgent || isExistAgent?.role !== 'agent') return res.send({ message: "No agent found on this number!" });
 
-                const updateDoc1 = {
-                    $inc: {
-                        balance: data?.total
-                    },
-                };
+                // const updateDoc1 = {
+                //     $inc: {
+                //         balance: data?.total
+                //     },
+                // };
 
-                const updateDoc2 = {
-                    $inc: {
-                        balance: - data?.total
-                    },
-                };
+                // const updateDoc2 = {
+                //     $inc: {
+                //         balance: - data?.total
+                //     },
+                // };
 
-                const cashOutData = {
-                    ...data, pin: "#####"
-                }
+                const result0 = await cashOutCollection.insertOne(cashOutData);
 
-                const result0 = await cashOutCollection.insertOne(data);
-
-                const result1 = await usersCollection.updateOne(query1, updateDoc1);
-                const result2 = await usersCollection.updateOne(query2, updateDoc2);
+                // const result1 = await usersCollection.updateOne(query1, updateDoc1);
+                // const result2 = await usersCollection.updateOne(query2, updateDoc2);
 
                 res.send(result0);
 
